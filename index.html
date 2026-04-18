@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tap Study</title>
+    <style>
+        body { font-family: 'Open Sans', sans-serif; text-align: center; background: #222; color: white; padding: 20px; }
+        .container { display: none; margin-top: 20px; }
+        #tapHere { 
+            width: 200px; height: 200px; border-radius: 50%; border: none; 
+            background: #007bff; color: white; font-size: 20px; cursor: pointer;
+        }
+        #buttoncontainer button { padding: 15px 30px; font-size: 18px; margin: 10px; cursor: pointer; }
+        .spanTime { font-weight: bold; color: #00ff00; }
+    </style>
+
+    <script type="text/javascript">
+        var tapCounter = 0;
+        var startTap = 0, endTap = 0;
+        var tapLogsArray = [];
+        var tapLimit = 5; 
+        var uniqueIdentifier = "";
+        var dependentVariable = "";
+        var showFeedback = false;
+        var interfaceVariations = 2;
+        var interfaceSequence = 1;
+        var totalTouchDuration = 0;
+
+        function onLoad() {
+            var d = new Date();
+            uniqueIdentifier = "user_" + d.getTime();
+            showFeedback = (d.getTime() % 2 == 0);
+
+            var el = document.getElementById('tapHere');
+            ["mousedown", "mouseup", "touchstart", "touchend"].forEach(function(te) {
+                el.addEventListener(te, tapityTap);
+            });
+            console.log("Ready. UserID: " + uniqueIdentifier);
+        }
+
+        function saveDependentVariable(dVariable) {
+            dependentVariable = dVariable;
+            document.getElementById("buttoncontainer").style.display = "none";
+            document.getElementById("container").style.display = "block";
+        }
+
+		async function syncToServer() {
+			var url = "clicklogs-api-production.up.railway.app";
+			document.getElementById("container").innerHTML = "<h2>Syncing to Cloud...</h2>";
+			
+			try {
+				const response = await fetch(url, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({
+						userId: uniqueIdentifier, // Generated in onLoad
+						dependentVariable: dependentVariable, // 'pc' or 'android'
+						taps: tapLogsArray // The full list of taps
+					})
+				});
+				
+				if(response.ok) {
+					document.getElementById("container").innerHTML = "<h2>Success! Data Saved.</h2>";
+				}
+			} catch (err) {
+				console.error("Sync failed:", err);
+				document.getElementById("container").innerHTML = "<h2>Error. Is Flask running?</h2>";
+			}
+		}
+
+        function tapityTap(tep) {
+            tep.preventDefault();
+            var d = new Date();
+            var te = tep.type;
+
+            if (te === "mousedown" || te === "touchstart") {
+                startTap = d.getTime();
+            } else if (te === "mouseup" || te === "touchend") {
+                endTap = d.getTime();
+                if (startTap === 0) return;
+
+                var duration = endTap - startTap;
+                tapCounter++;
+                totalTouchDuration += duration;
+                var mean = totalTouchDuration / tapCounter;
+
+                tapLogsArray.push({
+                    sequenceNumber: tapCounter,
+                    startTimestamp: startTap,
+                    endTimestamp: endTap,
+                    duration: duration,
+                    interfaceType: showFeedback ? "feedback" : "nofeedback"
+                });
+
+                if (showFeedback) {
+                    document.getElementById("counter").innerHTML = "Mean: <span class='spanTime'>" + Math.round(mean) + "</span> ms";
+                }
+
+                if (tapCounter >= tapLimit) {
+                    if (interfaceSequence < interfaceVariations) {
+                        document.getElementById("tapHere").style.display = "none";
+                        document.getElementById("continue").style.display = "inline-block";
+                    } else {
+                        syncToServer();
+                    }
+                }
+                startTap = 0;
+            }
+        }
+
+        function startNext() {
+            interfaceSequence++;
+            tapCounter = 0;
+            totalTouchDuration = 0;
+            showFeedback = !showFeedback;
+            document.getElementById("tapHere").style.display = "inline-block";
+            document.getElementById("continue").style.display = "none";
+            document.getElementById("counter").innerHTML = "";
+        }
+    </script>
+</head>
+
+<body onload="onLoad()">
+    <div id="buttoncontainer">
+        <h1>Select Platform</h1>
+        <button onclick="saveDependentVariable('android')">Android</button>
+        <button onclick="saveDependentVariable('pc')">PC</button>
+    </div>
+
+    <div id="container" class="container">
+        <div id="counter"></div>
+        <div id="action" style="margin: 10px; color: #666;"></div>
+        <button id="tapHere">TAP HERE</button>
+        <button id="continue" style="display:none;" onclick="startNext()">Continue to Next Variation</button>
+    </div>
+</body>
+</html>
